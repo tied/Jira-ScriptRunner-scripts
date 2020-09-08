@@ -1,0 +1,17 @@
+import com.atlassian.jira.component.ComponentAccessor
+import com.atlassian.jira.event.type.EventDispatchOption
+import com.atlassian.jira.user.ApplicationUser
+import com.atlassian.jira.issue.MutableIssue
+import com.atlassian.jira.issue.index.IssueIndexingService
+
+def issue = ComponentAccessor.getIssueManager().getIssueObject("P9127152-11")
+
+def currentUser = ComponentAccessor.userManager.getUserByName("alex")
+def flag = ComponentAccessor.customFieldManager.getCustomFieldObjectsByName("Сервис-менеджер").first()
+def vlad = ComponentAccessor.userManager.getUserByName("vlad")
+
+
+	issue.setCustomFieldValue(flag,vlad)
+ComponentAccessor.issueManager.updateIssue(currentUser,issue,EventDispatchOption.DO_NOT_DISPATCH,false)
+    IssueIndexingService indexing = (IssueIndexingService) ComponentAccessor.getComponent(IssueIndexingService.class)
+    indexing.reIndex(issue)
