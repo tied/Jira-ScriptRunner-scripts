@@ -1,0 +1,39 @@
+import com.atlassian.mail.Email;
+import com.sun.mail.imap.IMAPProvider
+import com.atlassian.mail.server.MailServerManager
+import com.atlassian.mail.server.SMTPMailServer
+import com.atlassian.jira.component.ComponentAccessor
+import com.atlassian.jira.ComponentManager
+import com.atlassian.jira.component.pico.ComponentManager
+import com.atlassian.jira.issue.MutableIssue
+import com.atlassian.mail.Email;
+import com.atlassian.mail.server.SMTPMailServer;
+import com.atlassian.sal.api.component.ComponentLocator
+import com.atlassian.jira.bc.issue.search.SearchService
+import com.atlassian.jira.web.bean.PagerFilter
+import com.atlassian.mail.Email
+import com.atlassian.mail.queue.SingleMailQueueItem
+
+
+
+def subject = "Я смог отправить себе письмо"
+def body = "1:0 в мою пользу"
+def currentUser = ComponentAccessor.getJiraAuthenticationContext().getLoggedInUser()
+def emailAddr = currentUser.getEmailAddress()
+
+
+ static boolean sendMail(String emailAddr, String subject, String body) {
+        def mailServer = ComponentAccessor.mailServerManager.defaultSMTPMailServer
+        def wasAddedToQueue = false
+        if (mailServer) {
+            def mail = new Email(emailAddr)
+            mail.setSubject(subject)
+            mail.setBody(body)
+            mail.setMimeType("text/html")
+            def item = new SingleMailQueueItem(mail)
+            ComponentAccessor.mailQueue.addItem(item)
+            wasAddedToQueue = true
+        }
+        return wasAddedToQueue
+    }
+sendMail(emailAddr,subject,body)
