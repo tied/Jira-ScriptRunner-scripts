@@ -1,0 +1,55 @@
+// Author: V.Bykouski
+import com.atlassian.jira.issue.MutableIssue
+import com.atlassian.jira.component.ComponentAccessor
+import com.atlassian.jira.user.ApplicationUser
+import com.atlassian.jira.event.type.EventDispatchOption
+import java.text.SimpleDateFormat
+import com.atlassian.jira.issue.Issue
+import com.atlassian.jira.component.ComponentAccessor
+import com.atlassian.jira.bc.issue.IssueService
+import com.atlassian.jira.issue.IssueInputParameters
+import com.atlassian.jira.user.ApplicationUser
+import com.atlassian.jira.workflow.TransitionOptions.Builder
+
+def currentUser = ComponentAccessor.getJiraAuthenticationContext().getLoggedInUser()
+def customFields = ComponentAccessor.customFieldManager.getCustomFieldObjects()
+if (issue.summary.equals("Notebook relocation, replacement, upgrade")){ 
+   	ApplicationUser jiraServiceUser  = ComponentAccessor.userManager.getUserByName('Admin')
+    def requestTypefield = customFields.find {it.getFieldName().equals("Request Type")}
+    def buyEquipment = customFields.find {it.getFieldName().equals("Buy equipment?")}
+	String requestTypeValue =  issue.getCustomFieldValue(requestTypefield).toString()    
+    issue.setSummary(requestTypeValue)
+    ComponentAccessor.issueManager.updateIssue(currentUser, issue, EventDispatchOption.ISSUE_UPDATED, false)
+    if (requestTypeValue== "Notebook replacement" && issue.getCustomFieldValue(buyEquipment).toString()  =="Yes"  )
+    	createSubtask(jiraServiceUser,issue)
+}
+
+def createSubtask (ApplicationUser user, MutableIssue parentIssue){
+
+    def constantManager = ComponentAccessor.getConstantsManager()
+	def issueFactory = ComponentAccessor.getIssueFactory()
+ComponentAccessor.jiraAuthenticationContext.setLoggedInUser(ComponentAccessor.userManager.getUserByName('Admin'))
+	def issueManager = ComponentAccessor.getIssueManager()
+    MutableIssue newSubTask = issueFactory.getIssue()
+    def notebooks = ComponentAccessor.customFieldManager.getCustomFieldObjectsByName("Notebook for replacement").first()
+    def ciCF = ComponentAccessor.customFieldManager.getCustomFieldObjectsByName("CI").first()
+    def itServiceCF = ComponentAccessor.customFieldManager.getCustomFieldObjectsByName("IT Service").first()
+    def customerRequestType= ComponentAccessor.customFieldManager.getCustomFieldObjectsByName("Customer Request Type").first()
+	def reqType =  customerRequestType.getCustomFieldType().getSingularObjectFromString("sd/46f67917-2d0a-42b1-910d-0fb94954b3bd")
+    def iqlFacade = ComponentAccessor.getOSGiComponentInstanceOfType(ComponentAccessor.getPluginAccessor().getClassLoader().findClass("com.riadalabs.jira.plugins.insight.channel.external.api.facade.IQLFacade"))
+    def objectFacade = ComponentAccessor.getOSGiComponentInstanceOfType(ComponentAccessor.getPluginAccessor().getClassLoader().findClass("com.riadalabs.jira.plugins.insight.channel.external.api.facade.ObjectFacade"))
+    def cis = notebooks.getValue(parentIssue)
+    def itservice = iqlFacade.findObjectsByIQLAndSchema(3, 'Name = "34 - Ðàáî÷åå ìåñòî (Desktop)"  AND objectType = "IT Service"')
+    newSubTask.setCustomFieldValue(ciCF,cis)
+    newSubTask.setCustomFieldValue(itServiceCF,itservice)
+    String searchCode = objectFacade.loadObjectAttributeBean(cis.first().getId(), "Search Code").getObjectAttributeValueBeans()[0].getValue().toString()
+    newSubTask.setSummary("End-of-life computing equipment buyout - "+ searchCode)
+    newSubTask.setCustomFieldValue(customerRequestType,reqType)
+   	newSubTask.setAssigneeId("itd_service_group")
+    newSubTask.setReporterId(parentIssue.reporterId)
+    newSubTask.setProjectObject(parentIssue.getProjectObject())
+    newSubTask.setIssueTypeId(constantManager.getAllIssueTypeObjects().find{it.getName() == "Typical Request"}.id)
+    Map<String,Object> newIssueParams = ["issue" : newSubTask] as Map<String,Object>
+    issueManager.createIssueObject(user, newIssueParams)
+    ComponentAccessor.issueLinkManager.createIssueLink(parentIssue.getId(),newSubTask.getId(),10000L, 1L, user)
+}
