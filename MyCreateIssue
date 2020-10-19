@@ -1,0 +1,43 @@
+import com.atlassian.jira.bc.issue.IssueService
+import com.atlassian.jira.component.ComponentAccessor
+import com.atlassian.jira.issue.IssueInputParameters
+import com.atlassian.jira.user.ApplicationUser
+import org.apache.commons.lang.StringUtils
+import com.atlassian.jira.issue.fields.CustomField
+import com.atlassian.jira.project.ProjectManager
+import com.atlassian.jira.issue.IssueManager
+
+def iqlFacade = ComponentAccessor.getOSGiComponentInstanceOfType(ComponentAccessor.getPluginAccessor().getClassLoader().findClass("com.riadalabs.jira.plugins.insight.channel.external.api.facade.IQLFacade"))
+def constantManager = ComponentAccessor.getConstantsManager()
+def projectKey = ComponentAccessor.projectManager.getProjectObjByKey("P9127152")
+def user = ComponentAccessor.getJiraAuthenticationContext().getLoggedInUser()
+def issueService = ComponentAccessor.getIssueService()
+def issueInputParameters = issueService.newIssueInputParameters()
+def issueManager = ComponentAccessor.getIssueManager()
+def newIssue = ComponentAccessor.issueFactory.getIssue()
+def LarinMA = ComponentAccessor.userManager.getUserByName("LarinMA")
+def servMen = ComponentAccessor.customFieldManager.getCustomFieldObjectsByName("Сервис-менеджер").first()
+def alex = ComponentAccessor.userManager.getUserByName("service_account")
+def orga = ComponentAccessor.customFieldManager.getCustomFieldObjectsByName("Организация").first()
+def dogovor = ComponentAccessor.customFieldManager.getCustomFieldObjectsByName("Договор").first()
+def zayavitel = ComponentAccessor.customFieldManager.getCustomFieldObjectsByName("Заявитель").first()
+def dogovorObject = iqlFacade.findObjects("""objectType = СПП and "Номер СПП" = 9-12715-2""")
+def orgaObject = iqlFacade.findObjects("""objectType = Организация and "Наименование" = "Центральный Банк Российской Федерации (Банк России)" """)
+newIssue.setSummary("Что то и здесь должно быть")
+newIssue.setDescription("Это тест с консоли")
+newIssue.setReporter(alex)
+newIssue.setProjectObject(projectKey)
+newIssue.setCustomFieldValue(servMen,alex)
+newIssue.setCustomFieldValue(dogovor,dogovorObject)
+newIssue.setCustomFieldValue(orga,orgaObject)
+newIssue.setCustomFieldValue(zayavitel, LarinMA)
+newIssue.setIssueTypeId(constantManager.getAllIssueTypeObjects().find{it.getName() == "Запрос на обслуживание"}.id)
+
+
+
+Map<String,Object> newIssueParams = ["issue" : newIssue] as Map<String,Object>
+    issueManager.createIssueObject(alex, newIssueParams)
+
+
+
+
