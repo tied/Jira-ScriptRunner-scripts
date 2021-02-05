@@ -1,0 +1,33 @@
+import com.atlassian.jira.issue.MutableIssue
+import com.atlassian.jira.component.ComponentAccessor
+import com.atlassian.jira.bc.issue.IssueService
+import com.atlassian.jira.issue.IssueInputParameters
+import com.atlassian.jira.user.ApplicationUser
+import com.atlassian.jira.workflow.TransitionOptions.Builder
+import com.atlassian.jira.issue.Issue
+import com.atlassian.jira.issue.IssueInputParametersImpl
+
+
+Issue parent = issue.getParentObject()
+def RequestTypeField = ComponentAccessor.customFieldManager.getCustomFieldObjectsByName("Customer Request Type").first()
+String requestTypeId = parent.getCustomFieldValue(RequestTypeField)
+String requestName = RequestTypeField.customFieldType.getDisplayedValue(requestTypeId)?.name
+
+if (requestName.equals("Offboarding")) {
+Collection<Issue> sbTasks = parent.getSubTaskObjects()
+Collection<Issue> statusSbTasks = sbTasks.findAll { it.getStatus().getName().equals("Completed") }
+	if (sbTasks.size() == statusSbTasks.size()) {
+    	transitIssue(parent,"Complete")
+	}
+}
+def transitIssue(Issue issue, String transitName){
+    IssueService issueService = ComponentAccessor.getIssueService()
+    ApplicationUser applicationUser = ComponentAccessor.getUserManager().getUserByKey("jiraadmin")
+    def workflow = ComponentAccessor.workflowManager.getWorkflow(issue)
+    int transitionID = workflow.getActionsByName(transitName).first().id
+    Builder builder =  new Builder()
+    def transopt = builder.skipConditions().skipValidators().skipPermissions()
+    IssueService.TransitionValidationResult transitionValidationResult = issueService.validateTransition(applicationUser, issue.getId(), transitionID, issueService.newIssueInputParameters(),transopt.build())
+    if (transitionValidationResult.isValid()) 
+	IssueService.IssueResult transitionResult = issueService.transition(applicationUser, transitionValidationResult)
+}
