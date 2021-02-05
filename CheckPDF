@@ -1,0 +1,17 @@
+import com.atlassian.jira.component.ComponentAccessor
+
+
+def RequestTypeField = ComponentAccessor.customFieldManager.getCustomFieldObjectsByName("Customer Request Type").first()
+String requestTypeId = issue.getCustomFieldValue(RequestTypeField)
+String requestName = RequestTypeField.customFieldType.getDisplayedValue(requestTypeId)?.name
+if(requestName.equals("Vacation")) {
+	def aM = ComponentAccessor.getAttachmentManager()
+    def attachments = aM.getAttachments(issue)
+    if (attachments.size() > 0) {
+        for (def attachment : attachments ) 
+        	if (attachment.getFilename().toLowerCase().contains(".pdf")) return true   
+        return false 
+    }
+    else return false
+}
+else return true
