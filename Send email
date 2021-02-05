@@ -16,14 +16,14 @@ import com.atlassian.mail.queue.SingleMailQueueItem
 
 
 
-def subject = "Я смог отправить себе письмо"
-def body = "1:0 в мою пользу"
-def currentUser = ComponentAccessor.getJiraAuthenticationContext().getLoggedInUser()
-def emailAddr = currentUser.getEmailAddress()
+def subject = "Я смог отправить себе письмо" // Тема письма 
+def body = "1:0 в мою пользу" // Тело письма
+def currentUser = ComponentAccessor.getJiraAuthenticationContext().getLoggedInUser() // Залоганный юзер
+def emailAddr = currentUser.getEmailAddress() // Емейл залоганного юзера
 
 
- static boolean sendMail(String emailAddr, String subject, String body) {
-        def mailServer = ComponentAccessor.mailServerManager.defaultSMTPMailServer
+ static boolean sendMail(String emailAddr, String subject, String body) { // метод для отправки емейла 
+        def mailServer = ComponentAccessor.mailServerManager.defaultSMTPMailServer // Вызываем майл сервер
         def wasAddedToQueue = false
         if (mailServer) {
             def mail = new Email(emailAddr)
