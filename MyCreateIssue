@@ -7,16 +7,17 @@ import com.atlassian.jira.issue.fields.CustomField
 import com.atlassian.jira.project.ProjectManager
 import com.atlassian.jira.issue.IssueManager
 
-def iqlFacade = ComponentAccessor.getOSGiComponentInstanceOfType(ComponentAccessor.getPluginAccessor().getClassLoader().findClass("com.riadalabs.jira.plugins.insight.channel.external.api.facade.IQLFacade"))
+def iqlFacade = ComponentAccessor.getOSGiComponentInstanceOfType(ComponentAccessor.getPluginAccessor()
+.getClassLoader().findClass("com.riadalabs.jira.plugins.insight.channel.external.api.facade.IQLFacade")) // Подгружаем класс для работы с IQL в инсайде
 def constantManager = ComponentAccessor.getConstantsManager()
 def projectKey = ComponentAccessor.projectManager.getProjectObjByKey("P9127152")
-def user = ComponentAccessor.getJiraAuthenticationContext().getLoggedInUser()
+def user = ComponentAccessor.getJiraAuthenticationContext().getLoggedInUser() // наш CurrentUser
 def issueService = ComponentAccessor.getIssueService()
 def issueInputParameters = issueService.newIssueInputParameters()
 def issueManager = ComponentAccessor.getIssueManager()
 def newIssue = ComponentAccessor.issueFactory.getIssue()
-def LarinMA = ComponentAccessor.userManager.getUserByName("LarinMA")
-def servMen = ComponentAccessor.customFieldManager.getCustomFieldObjectsByName("Сервис-менеджер").first()
+def LarinMA = ComponentAccessor.userManager.getUserByName("LarinMA") // Поиск юзера по имени
+def servMen = ComponentAccessor.customFieldManager.getCustomFieldObjectsByName("Сервис-менеджер").first() // Поиск кастомфилда по имени
 def alex = ComponentAccessor.userManager.getUserByName("service_account")
 def orga = ComponentAccessor.customFieldManager.getCustomFieldObjectsByName("Организация").first()
 def dogovor = ComponentAccessor.customFieldManager.getCustomFieldObjectsByName("Договор").first()
@@ -36,7 +37,7 @@ newIssue.setIssueTypeId(constantManager.getAllIssueTypeObjects().find{it.getName
 
 
 Map<String,Object> newIssueParams = ["issue" : newIssue] as Map<String,Object>
-    issueManager.createIssueObject(alex, newIssueParams)
+    issueManager.createIssueObject(alex, newIssueParams) // создание задач (обязательно наличие всех необходимых филдов)
 
 
 
