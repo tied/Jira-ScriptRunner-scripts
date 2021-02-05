@@ -1,0 +1,27 @@
+// Behaviours  - " Check for the number of days"
+// CF: Amount of vacation days , Start date.
+
+import groovy.transform.BaseScript
+import com.onresolve.jira.groovy.user.FieldBehaviours
+@BaseScript FieldBehaviours fieldBehaviours
+
+def fieldEndDate = getFieldByName("End date")
+def fieldStartDate = getFieldByName("Start date")
+def amountCounts = getFieldByName("Amount of vacation days")
+getFieldByName("End date").setReadOnly(true)
+Date nowDate = new Date()
+String valueStartDate = fieldStartDate.getFormValue().toString()
+String valueAmountCounts = amountCounts.getFormValue().toString()
+if (valueAmountCounts && valueStartDate ) {
+    Date startDate = new Date().parse("dd/MMM/yy",valueStartDate)
+    if (valueStartDate && nowDate > startDate) {
+        fieldStartDate.setError("Невозможно установить начало отпуска в прошедшем времени")
+    }
+    else {
+        fieldStartDate.clearError()
+    }
+    Integer amountCountsInt = Integer.parseInt(valueAmountCounts)
+    Date sumEndDate = startDate + amountCountsInt
+    String endDate = sumEndDate.format("dd/MMM/yy")
+    fieldEndDate.setFormValue(endDate)
+}
