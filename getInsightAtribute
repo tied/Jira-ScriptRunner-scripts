@@ -1,0 +1,122 @@
+
+{Projectkey}:IssueType:Workflow
+
+
+start date < End Date
+
+StartDate > Due Date
+
+
+
+import com.atlassian.jira.issue.CustomFieldManager
+import com.atlassian.jira.component.ComponentAccessor
+import com.onresolve.scriptrunner.runner.customisers.PluginModule
+import com.onresolve.scriptrunner.runner.customisers.WithPlugin
+import com.riadalabs.jira.plugins.insight.channel.external.api.facade.IQLFacade
+import com.riadalabs.jira.plugins.insight.channel.external.api.facade.ObjectFacade
+import com.riadalabs.jira.plugins.insight.services.model.ObjectBean
+import com.atlassian.jira.user.ApplicationUser
+
+
+@WithPlugin("com.riadalabs.jira.plugins.insight")
+@PluginModule
+ObjectFacade objectFacade
+@PluginModule
+IQLFacade iqlFacade
+
+def issue = ComponentAccessor.getIssueManager().getIssueObject("SUP-18")
+ApplicationUser reporter = issue.getReporter()
+String reporterName = reporter.getUsername()
+
+
+String iql = """objectType = "User" AND Profile = ${reporterName} """ // текст запроса в инсайт
+List<ObjectBean> insightReporterObject = iqlFacade.findObjects(iql) as List<ObjectBean>
+if (insightReporterObject) {
+    ObjectBean object = insightReporterObject.first()
+    int managerId = objectFacade.loadObjectAttributeBean(object.id, "Manager").objectAttributeValueBeans.first().referencedObjectBeanId //получаешь id связанного объекта типа менеджер
+    String managerProfile = objectFacade.loadObjectAttributeBean(managerId, "Profile").objectAttributeValueBeans.first().value //получаешь значение аттрибута
+    ApplicationUser manager = ComponentAccessor.userManager.getUserByKey(managerProfile) // получаешь пользователя
+    ApplicationUser vZebrev = ComponentAccessor.userManager.getUserByName("v.zebrev")
+}  
+    def approvals = ComponentAccessor.customFieldManager.getCustomFieldObjectsByName("Approvers").first()
+	List<ApplicationUser> listApprovals = new ArrayList<ApplicationUser>()
+	listApprovals.add(manager)
+   // issue.setCustomFieldValue(approvals,manager)
+
+
+
+
+
+
+
+
+
+
+
+
+
+import com.atlassian.jira.issue.MutableIssue
+import com.atlassian.jira.component.ComponentAccessor
+import com.atlassian.jira.bc.issue.IssueService
+import com.atlassian.jira.issue.IssueInputParameters
+import com.atlassian.jira.user.ApplicationUser
+import com.atlassian.jira.workflow.TransitionOptions.Builder
+import com.atlassian.jira.issue.Issue
+
+def issue = ComponentAccessor.issueManager.getIssueByCurrentKey("SUP-53")
+ApplicationUser applicationUser = ComponentAccessor.getUserManager().getUserByKey("jiraadmin")
+Issue parent = issue.getParentObject()
+Collection<Issue> sbTasks = parent.getSubTaskObjects()
+for (Issue sbTasks : )
+
+return sbTasks
+
+
+for(Issue candidateIssue : links){
+    transitIssue(candidateIssue,"Rejected")
+    log.debug("${candidateIssue} transited to Rejected")
+}
+transitIssue(parentIssue,"Completed")
+log.debug("${parentIssue} transited to Completed")
+
+def transitIssue(Issue issue, String transitName){
+    ApplicationUser applicationUser = ComponentAccessor.getUserManager().getUserByKey("jiraadmin")
+    def workflow = ComponentAccessor.workflowManager.getWorkflow(issue)
+    int transitionID = workflow.getActionsByName(transitName).first().id
+    IssueService issueService = ComponentAccessor.getIssueService()
+    Builder builder =  new Builder()
+    def transopt = builder.skipConditions().skipValidators().skipPermissions()
+    IssueService.TransitionValidationResult transitionValidationResult = issueService.validateTransition(applicationUser, issue.getId(), transitionID, issueService.newIssueInputParameters(),transopt.build())
+    if (transitionValidationResult.isValid()) 
+	IssueService.IssueResult transitionResult = issueService.transition(applicationUser, transitionValidationResult)
+}
+
+String getCustomerRequestTypeName(Issue issue){
+    def RequestTypeField = ComponentAccessor.customFieldManager.getCustomFieldObjectsByName("Customer Request Type").first()
+	String requestTypeId = issue.getCustomFieldValue(RequestTypeField)
+    if(requestTypeId){
+        String requestName = RequestTypeField.customFieldType.getDisplayedValue(requestTypeId)?.name
+        return requestName
+    }
+    else return null
+	
+}
+
+   
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
