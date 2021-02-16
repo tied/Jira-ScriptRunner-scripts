@@ -1,0 +1,11 @@
+import com.atlassian.jira.issue.Issue;
+import com.atlassian.jira.component.ComponentAccessor;
+import com.atlassian.jira.issue.comments.CommentManager
+import com.atlassian.jira.user.ApplicationUser
+
+Issue issueKey  = issue
+ApplicationUser currentUser = ComponentAccessor.getJiraAuthenticationContext().getLoggedInUser()
+CommentManager commentManager = ComponentAccessor.getCommentManager()
+String comment = "A Sample Comment"
+
+commentManager.create(issueKey, currentUser,comment, true)
