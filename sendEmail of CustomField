@@ -1,0 +1,14 @@
+Отпуск согласован, данные:
+ФИО - $issue.reporter.displayName.
+Начало отпуска - <% out <<
+  new java.text.SimpleDateFormat("dd/MMM/yyyy",new Locale("ru")).format(issue.getCustomFieldValue(
+      com.atlassian.jira.component.ComponentAccessor.getCustomFieldManager().getCustomFieldObjectByName("Start date"))
+    ) %>
+Конец отпуска - <% out <<
+  new java.text.SimpleDateFormat("dd/MMM/yyyy",new Locale("ru")).format(issue.getCustomFieldValue(
+      com.atlassian.jira.component.ComponentAccessor.getCustomFieldManager().getCustomFieldObjectByName("End date"))
+    ) %>
+Количество дней отпуска - <% out <<
+(issue.getCustomFieldValue(  
+ com.atlassian.jira.component.ComponentAccessor.getCustomFieldManager().getCustomFieldObjectByName("Amount of vacation days")).toInteger()
+    ) %> дней.
