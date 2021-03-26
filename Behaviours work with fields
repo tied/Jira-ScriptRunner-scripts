@@ -1,0 +1,552 @@
+import com.atlassian.jira.component.ComponentAccessor
+import com.atlassian.jira.user.ApplicationUser
+import com.atlassian.jira.issue.MutableIssue
+import com.atlassian.jira.issue.Issue
+import com.atlassian.jira.issue.CustomFieldManager
+import com.onresolve.jira.groovy.user.FormField
+import com.atlassian.jira.issue.customfields.manager.OptionsManager
+import groovy.transform.BaseScript
+import com.onresolve.jira.groovy.user.FieldBehaviours
+import com.atlassian.jira.issue.customfields.manager.OptionsManager
+import java.sql.Timestamp  
+import org.joda.time.format.*
+import org.apache.commons.lang3.time.DateUtils
+import java.util.Calendar
+import java.util.Date
+import com.atlassian.jira.user.util.UserManager
+import java.util.List
+import com.onresolve.jira.groovy.user.FieldBehaviours
+import com.atlassian.jira.web.bean.PagerFilter
+import com.atlassian.jira.bc.issue.search.SearchService
+import com.atlassian.jira.issue.search.SearchResults
+import com.atlassian.jira.issue.index.IssueIndexingService
+import org.apache.log4j.Level
+import org.apache.log4j.Logger
+import com.atlassian.jira.user.util.UserManager
+import com.atlassian.jira.issue.IssueManager
+import com.atlassian.jira.issue.watchers.WatcherManager
+import com.atlassian.jira.event.type.EventDispatchOption
+import com.atlassian.jira.issue.MutableIssue
+    
+def kaskadField = getFieldByName("SelectList")
+def checkBox = getFieldByName("CheckBox")
+def radioButton = getFieldByName("RadioButton")
+def selectListMulti = getFieldByName("SelectList(Multi)")
+def selectListSingle = getFieldByName("SelectList(single)")
+def datePicker = getFieldByName("DatePicker")
+def dateTimePicker = getFieldByName("DateTimePicker")
+def labels = getFieldByName("Labels cf[10308]")
+def textFieldSingle = getFieldByName("TextField(single)")
+def textFieldMulti = getFieldByName("TextField(multi)")
+def userPickerSingle = getFieldByName("UserPicker(single)")
+def userPickerMulti = getFieldByName("UserPicker(multi)")
+def issuePicker = getFieldByName("IssuePicker")
+def versionPicker = getFieldByName("VersionPicker")
+def optionsManager = ComponentAccessor.getOptionsManager()
+def customFieldManager = ComponentAccessor.getCustomFieldManager()
+
+//ArrayList valueMulti = selectListMulti.getFormValue() as ArrayList
+ArrayList kaskadFieldValue = kaskadField.getValue() as ArrayList
+kaskadField.setDescription(kaskadFieldValue.toString()) 
+if (kaskadFieldValue.size() >= 1) { 
+	switch (kaskadFieldValue.toString()) {
+    case "[Checkbox-Radiobutton]":
+        RejectedSwitchOptions()
+        clearParrents()
+        clearAllFields()
+		checkBox.setHidden(false)
+        radioButton.setHidden(false)
+        break
+        
+    case "[Checkbox-Radiobutton, Поставить значения]":
+        RejectedSwitchOptions()
+        def checkBoxObject = customFieldManager.getCustomFieldObject(checkBox.getFieldId())
+        def configBox = checkBoxObject.getRelevantConfig(getIssueContext())
+		def optionsBox = optionsManager.getOptions(configBox)
+		def optionsToSelectBox = optionsBox.findAll { it.value in ["Option 1", "Option 3" , "Option 5"]} 
+        checkBox.setFormValue(optionsToSelectBox*.optionId)
+        def radioButtonObject = customFieldManager.getCustomFieldObject(radioButton.getFieldId())
+        def configButton = radioButtonObject.getRelevantConfig(getIssueContext())
+		def optionsButton = optionsManager.getOptions(configButton)
+		def optionsToSelectButton = optionsButton.find {it.value == "Option 4"} 
+        radioButton.setFormValue(optionsToSelectButton*.optionId) 
+        rejecteChanges()
+        break
+        
+    case "[Checkbox-Radiobutton, Обязательность и только чтение]":
+        checkBox.setRequired(true)
+        radioButton.setReadOnly(true)
+        break
+        
+    case "[Checkbox-Radiobutton, Поменять опции]":
+        def checkBoxObject = ComponentAccessor.customFieldManager.getCustomFieldObjectsByName("CheckBox")[0]
+		def configBox = checkBoxObject.getRelevantConfig(getIssueContext())
+		def optionsBox = ComponentAccessor.optionsManager.getOptions(configBox)
+        LinkedHashMap optionsMapBox = new LinkedHashMap()
+        def option5 = optionsBox.find{it.value == "Option 5"}
+        def option1 = optionsBox.find{it.value == "Option 1"}
+        def option3 = optionsBox.find{it.value == "Option 3"}
+ 		optionsMapBox.put(option5.getOptionId(),option5.getValue())
+        optionsMapBox.put(option1.getOptionId(),option1.getValue())
+ 		optionsMapBox.put(option3.getOptionId(),option3.getValue())
+        checkBox.setFieldOptions(optionsMapBox)
+        def radioButtonObject = ComponentAccessor.customFieldManager.getCustomFieldObjectsByName("RadioButton")[0]
+        def fieldConfig = radioButtonObject.getConfigurationSchemes()[0].configs.values()[0]  
+		def configButton = radioButtonObject.getRelevantConfig(getIssueContext())
+		def optionsButton = ComponentAccessor.optionsManager.getOptions(configButton)
+        LinkedHashMap optionsMapButton = new LinkedHashMap()
+        def option4 = optionsButton.find{it.value =="Option 4"}
+        def option2 = optionsButton.find{it.value =="Option 2"}
+        optionsMapButton.put(-1L,"None")
+        optionsMapButton.put(option2.getOptionId(),option2.getValue())
+        optionsMapButton.put(option4.getOptionId(),option4.getValue())
+        radioButton.setFieldOptions(optionsMapButton) 
+        //optionsManager.setValue(optionsButton.find{it.value == 'Option 1'}, "None")
+       
+		//optionsButton.each { 
+        //	if (it.value in ['Option 1' , 'Option 3' , 'Option 5' , 'Option 6']) {
+           // optionsManager.enableOption(it)     
+        	//}
+        //   }
+        //def radioButtonId = radioButton.getFieldId().replaceAll("[a-z,_]", "").toLong()
+        //optionsManager.createOption(configButton, radioButtonId , 0 , 'None')
+        rejecteChanges()
+        break
+    case "[Checkbox-Radiobutton, Почистить значения]":
+        RejectedSwitchOptions()
+        rejecteChanges()
+        clearAllFields()
+        break
+        
+    case "[Select List]":
+        clearParrents()
+        clearAllFields()
+		selectListMulti.setHidden(false)
+        selectListSingle.setHidden(false)
+        break
+    
+    case "[Select List, Поставить значения]":
+        def multiListObject = customFieldManager.getCustomFieldObject(selectListMulti.getFieldId())
+        def configMulti = multiListObject.getRelevantConfig(getIssueContext())
+		def optionsMulti = optionsManager.getOptions(configMulti)
+		def optionsToSelectMulti = optionsMulti.findAll { it.value in ["Option 1", "Option 3" , "Option 5"]} 
+        selectListMulti.setFormValue(optionsToSelectMulti*.optionId)
+        def singleListObject = customFieldManager.getCustomFieldObject(selectListSingle.getFieldId())
+        def configSingle = singleListObject.getRelevantConfig(getIssueContext())
+		def optionsSingle = optionsManager.getOptions(configSingle)
+		def optionsToSelectSingle = optionsSingle.find {it.value == "Option 4"} 
+        selectListSingle.setFormValue(optionsToSelectSingle*.optionId) 
+        break
+        
+    case "[Select List, Поменять значения местами]":
+        ArrayList valueMulti = selectListMulti.getValue() as ArrayList
+        def valueSingle = selectListSingle.getValue()
+        
+		def singleListObject = customFieldManager.getCustomFieldObject(selectListSingle.getFieldId())
+        def multiListObject = customFieldManager.getCustomFieldObject(selectListMulti.getFieldId())
+        
+        def configSingle = singleListObject.getRelevantConfig(getIssueContext())
+        def configMulti = multiListObject.getRelevantConfig(getIssueContext())
+        
+		def optionsSingle = optionsManager.getOptions(configSingle)
+        def optionsMulti = optionsManager.getOptions(configMulti)
+        
+		def optionsToSelectSingle = optionsSingle.find {it.value == valueMulti.first()}
+		def optionsToSelectMulti = optionsMulti.findAll { it.value in  [valueSingle]}
+		 
+        selectListSingle.setFormValue(optionsToSelectSingle*.optionId)
+        selectListMulti.setFormValue(optionsToSelectMulti*.optionId)
+        break
+        
+    case "[Select List, Добавить несуществующие опции]":
+        CreateOptions()
+        break
+        
+    case"[Select List, Почистить значения]":
+        rejectedLists()
+        clearAllFields()
+        break
+        
+    case "[Dates]":
+        clearParrents()
+        clearAllFields()
+		datePicker.setHidden(false)
+        dateTimePicker.setHidden(false)
+        break
+        
+    case "[Dates, Проставить текущию даты]":
+        def today = new Date().format('dd/MMM/yy')
+        def todayAndTime = new Date().format('dd/MMM/yy HH:mm')
+        datePicker.setFormValue(today)
+        dateTimePicker.setFormValue(todayAndTime)
+        break
+        
+    case "[Dates, +++]":
+        def day = new Date()
+        Date resultPlus = day + 3
+        def resultFormatPlus = resultPlus.format('dd/MMM/yy')
+        datePicker.setFormValue(resultFormatPlus)
+        Date newDate = DateUtils.addHours(day, 3)
+        Date newDatePlusMin = DateUtils.addMinutes(newDate, 3)
+        def resultFormatPlusTime = newDatePlusMin.format('dd/MMM/yy HH:mm')
+        dateTimePicker.setFormValue(resultFormatPlusTime)
+        break
+        
+    case "[Dates, ---]":
+        def day = new Date()
+        Date resultMinusYear = DateUtils.addYears(day , -3)
+        def resultFormatMinus = resultMinusYear.format('dd/MMM/yy')
+        datePicker.setFormValue(resultFormatMinus)  
+        Date minusDay = DateUtils.addDays(day , -1)
+        Date minusHour = DateUtils.addHours(minusDay , -1)
+        Date minusMin = DateUtils.addMinutes(minusHour , -1)
+        def resultFormatMinusTime = minusMin.format('dd/MMM/yy HH:mm')
+        dateTimePicker.setFormValue(resultFormatMinusTime)
+        break
+        
+    case "[Dates, Почистить значения]":
+        clearAllFields()
+        break
+        
+    case "[Text Fields]":
+        clearParrents()
+        clearAllFields()
+		labels.setHidden(false)
+        textFieldSingle.setHidden(false)
+        textFieldMulti.setHidden(false)
+        break
+        
+    case "[Text Fields, Заполнять поля]":
+        textFieldSingle.setFormValue("Пару слов")
+        textFieldMulti.setFormValue("Пару строк пару строк пару строк")
+        break 
+        
+    case "[Text Fields, Проставить ошибки]":
+        textFieldSingle.setError("Смешной текст")
+        textFieldMulti.setError("Ну может хоть здесь смешной")
+        break
+        
+    case "[Text Fields, Убрать ошибки]":
+        textFieldSingle.clearError()
+        textFieldMulti.clearError()
+        break
+        
+    case "[Text Fields, Поменять значения]":
+        def valueSingle = textFieldSingle.getValue()
+        def valueMulti = textFieldMulti.getValue()
+        textFieldSingle.setFormValue(valueMulti)
+        textFieldMulti.setFormValue(valueSingle)
+        break
+        
+    case "[Text Fields, Почистить значения]":
+        clearAllFields()
+        break
+        
+    case "[User Pickers]":
+        clearParrents()
+        clearAllFields()
+		userPickerSingle.setHidden(false)
+        userPickerMulti.setHidden(false)
+        break
+        
+    case "[User Pickers, Поставить значения]":
+        ApplicationUser currentUser = ComponentAccessor.getJiraAuthenticationContext().getLoggedInUser()
+        ApplicationUser friendUser = ComponentAccessor.userManager.getUserByName("v.brejneva")
+        ApplicationUser friendUser2 = ComponentAccessor.userManager.getUserByName("v.bykouski")
+        userPickerSingle.setFormValue(currentUser.username)
+        ArrayList<ApplicationUser> multi = new ArrayList()
+        multi.add(friendUser2)
+        multi.add(friendUser)
+        userPickerMulti.setFormValue(multi.username)
+        break
+        
+    case "[User Pickers, Поменять значения местами]":
+        def switch1 = userPickerSingle.getValue()
+        String switch2 = userPickerMulti.getValue() as String
+        String[] users = switch2.split(",") 
+        userPickerMulti.setFormValue(switch1)
+        userPickerSingle.setFormValue(users[0])        
+        break
+       
+    case "[User Pickers, Почистить значения]":
+        clearAllFields()
+        break
+        
+    case "[Special fields]":
+        clearParrents()
+        clearAllFields()
+		issuePicker.setHidden(false)
+        break
+        
+    case "[Special fields, Поставить значения]":
+		List<MutableIssue> issues = getIssuesByJql("""project = "So easy is the best" """)    
+        MutableIssue issueIt = issues.first()        
+        issuePicker.setFormValue(issueIt.key)
+        def das = getFieldByName("IssuePicker")
+		das.setDescription(issueIt.toString())
+        break
+        
+    case "[Special fields, Почистить значения]":
+        clearParrents()
+        clearAllFields()
+        break
+        
+    case "[Tabs]":
+        showTabs()
+        switchTab(0)
+        clearParrents()
+        clearAllFields()
+        break
+        
+    case "[Tabs, Следующая вкладка]":
+        //def tab = getFieldScreen().tabs.find {it.name == "Field tab 2"}
+        showTabs()
+		hideTab("Field tab 3") 
+        hideTab("Field Tab")
+        switchTab("Field tab 2") 
+        //getFieldById("summary").setFormValue(tab.toString())
+        break
+    case "[Tabs, Предыдущая вкладка]":
+        showTabs()
+        hideTab("Field tab 3") 
+        hideTab("Field tab 2")
+        switchTab("Field Tab")
+        break
+      
+    case "[Tabs, Спрятать вкладки]":
+       
+        break
+    }   
+}
+
+else clearParrents()
+
+void showTabs() {
+    showTab(0)
+    showTab(1)
+    showTab(2)
+}
+    
+    
+List<MutableIssue> getIssuesByJql(String jqlQuery) {
+     IssueManager issueManager = ComponentAccessor.getIssueManager()
+     ApplicationUser superAdmin = ComponentAccessor.userManager.getUserByName("a.polyakov")
+     SearchService searchService = ComponentAccessor.getComponent(SearchService.class)
+
+    List<MutableIssue> issuesByJql = new ArrayList<MutableIssue>()
+    SearchService.ParseResult parseResult = searchService.parseQuery(superAdmin, jqlQuery)
+    if (parseResult.isValid()) {
+        SearchResults searchResult = searchService.search(superAdmin, parseResult.getQuery(), PagerFilter.getUnlimitedFilter())
+        issuesByJql = searchResult.results.collect { issueManager.getIssueObject(it.id) }
+    } else {
+        log.error("Search query not valid: " + jqlQuery)
+    }
+    return issuesByJql
+}
+  
+
+
+void clearAllFields() {
+    def checkBox = getFieldByName("CheckBox")
+    def radioButton = getFieldByName("RadioButton")
+    def selectListMulti = getFieldByName("SelectList(Multi)")
+    def selectListSingle = getFieldByName("SelectList(single)")
+    def datePicker = getFieldByName("DatePicker")
+    def dateTimePicker = getFieldByName("DateTimePicker")
+    def labels = getFieldByName("Labels")
+    def textFieldSingle = getFieldByName("TextField(single)")
+    def textFieldMulti = getFieldByName("TextField(multi)")
+    def userPickerSingle = getFieldByName("UserPicker(single)")
+    def userPickerMulti = getFieldByName("UserPicker(multi)")
+    def issuePicker = getFieldByName("IssuePicker")
+    def versionPicker = getFieldByName("VersionPicker")      
+	def checkBoxValue = checkBox.getFormValue()
+    def radioButtonValue = radioButton.getFormValue()
+    def selectListMultiValue = selectListMulti.getFormValue()
+    def selectListSingleValue = selectListSingle.getFormValue()
+    def datePickerValue = datePicker.getFormValue()
+    def dateTimePickerValue = dateTimePicker.getFormValue()
+    def labelsValue = labels.getFormValue()
+    def textFieldSingleValue = textFieldSingle.getFormValue()
+    def textFieldMultiValue = textFieldMulti.getFormValue()
+    def userPickerSingleValue = userPickerSingle.getFormValue()
+    def userPickerMultiValue = userPickerMulti.getFormValue()
+    def issuePickerValue = issuePicker.getFormValue()
+    def versionPickerValue = versionPicker.getFormValue()
+    checkBox.setFormValue("")
+    radioButton.setFormValue(-1)
+    selectListMulti.setFormValue(-1)
+    selectListSingle.setFormValue(-1)
+    datePicker.setFormValue("")
+    dateTimePicker.setFormValue("")
+    textFieldSingle.setFormValue("")
+    textFieldMulti.setFormValue("")
+    userPickerSingle.setFormValue("")
+	userPickerMulti.setFormValue("")
+    issuePicker.setFormValue(null)
+}
+
+void clearParrents() {
+    def checkBox = getFieldByName("CheckBox")
+    def radioButton = getFieldByName("RadioButton")
+    def selectListMulti = getFieldByName("SelectList(Multi)")
+    def selectListSingle = getFieldByName("SelectList(single)")
+    def datePicker = getFieldByName("DatePicker")
+    def dateTimePicker = getFieldByName("DateTimePicker")
+    def labels = getFieldByName("Labels cf[10308]")
+    def textFieldSingle = getFieldByName("TextField(single)")
+    def textFieldMulti = getFieldByName("TextField(multi)")
+    def userPickerSingle = getFieldByName("UserPicker(single)")
+    def userPickerMulti = getFieldByName("UserPicker(multi)")
+    def issuePicker = getFieldByName("IssuePicker")
+    def versionPicker = getFieldByName("VersionPicker") 
+    checkBox.setHidden(true)
+    versionPicker.setHidden(true)
+    issuePicker.setHidden(true)
+    userPickerMulti.setHidden(true)
+    userPickerSingle.setHidden(true)
+    textFieldMulti.setHidden(true)
+    textFieldSingle.setHidden(true)
+    labels.setReadOnly(true)
+    dateTimePicker.setHidden(true)
+    datePicker.setHidden(true)
+    selectListSingle.setHidden(true)
+    selectListMulti.setHidden(true)
+    radioButton.setHidden(true)
+}
+
+void rejecteChanges() {
+    def checkBox = getFieldByName("CheckBox").setRequired(false)
+	def radioButton = getFieldByName("RadioButton").setReadOnly(false)
+}
+
+void RejectedSwitchOptions() {
+    def checkBox = getFieldByName("CheckBox")
+	def radioButton = getFieldByName("RadioButton")
+	def checkBoxObject = ComponentAccessor.customFieldManager.getCustomFieldObjectsByName("CheckBox")[0]
+	def configBox = checkBoxObject.getRelevantConfig(getIssueContext())
+	def optionsBox = ComponentAccessor.optionsManager.getOptions(configBox)
+    LinkedHashMap optionsMapBox = new LinkedHashMap()
+    def option1Box = optionsBox.find{it.value == "Option 1"}
+    def option2Box = optionsBox.find{it.value == "Option 2"}
+    def option3Box = optionsBox.find{it.value == "Option 3"}
+    def option4Box = optionsBox.find{it.value == "Option 4"}
+    def option5Box = optionsBox.find{it.value == "Option 5"}
+    def option6Box = optionsBox.find{it.value == "Option 6"}
+    optionsMapBox.put(option1Box.getOptionId(),option1Box.getValue())
+    optionsMapBox.put(option2Box.getOptionId(),option2Box.getValue())
+    optionsMapBox.put(option3Box.getOptionId(),option3Box.getValue())
+    optionsMapBox.put(option4Box.getOptionId(),option4Box.getValue())
+    optionsMapBox.put(option5Box.getOptionId(),option5Box.getValue())
+    optionsMapBox.put(option6Box.getOptionId(),option6Box.getValue())
+    checkBox.setFieldOptions(optionsMapBox)
+    
+    def radioButtonObject = ComponentAccessor.customFieldManager.getCustomFieldObjectsByName("RadioButton")[0]
+    def fieldConfig = radioButtonObject.getConfigurationSchemes()[0].configs.values()[0]  
+	def configButton = radioButtonObject.getRelevantConfig(getIssueContext())
+	def optionsButton = ComponentAccessor.optionsManager.getOptions(configButton)
+    LinkedHashMap optionsMapButton = new LinkedHashMap()
+    def option1Button = optionsButton.find{it.value =="Option 1"}
+    def option2Button = optionsButton.find{it.value =="Option 2"}
+    def option3Button = optionsButton.find{it.value =="Option 3"}
+    def option4Button = optionsButton.find{it.value =="Option 4"}
+    def option5Button = optionsButton.find{it.value =="Option 5"}
+    def option6Button = optionsButton.find{it.value =="Option 6"}
+    optionsMapButton.put(-1L,"None")
+    optionsMapButton.put(option1Button.getOptionId(),option1Button.getValue())
+    optionsMapButton.put(option2Button.getOptionId(),option2Button.getValue())
+    optionsMapButton.put(option3Button.getOptionId(),option3Button.getValue())
+    optionsMapButton.put(option4Button.getOptionId(),option4Button.getValue())
+    optionsMapButton.put(option5Button.getOptionId(),option5Button.getValue())
+    optionsMapButton.put(option6Button.getOptionId(),option6Button.getValue())
+    radioButton.setFieldOptions(optionsMapButton)     
+}
+
+void CreateOptions() {
+    def selectListMulti = getFieldByName("SelectList(Multi)")
+	def selectListSingle = getFieldByName("SelectList(single)")
+	def selectListMultiObject = ComponentAccessor.customFieldManager.getCustomFieldObjectsByName("SelectList(Multi)")[0]
+	def configMulti = selectListMultiObject.getRelevantConfig(getIssueContext())
+	def optionsMulti = ComponentAccessor.optionsManager.getOptions(configMulti)
+    LinkedHashMap optionsMapMulti = new LinkedHashMap()
+    def option1Multi = optionsMulti.find{it.value == "Option 1"}
+    def option2Multi = optionsMulti.find{it.value == "Option 2"}
+    def option3Multi = optionsMulti.find{it.value == "Option 3"}
+    def option4Multi = optionsMulti.find{it.value == "Option 4"}
+    def option5Multi = optionsMulti.find{it.value == "Option 5"}
+    def option6Multi = optionsMulti.find{it.value == "Option 6"}
+    
+    optionsMapMulti.put(option1Multi.getOptionId(),option1Multi.getValue())
+    optionsMapMulti.put(option2Multi.getOptionId(),option2Multi.getValue())
+    optionsMapMulti.put(option3Multi.getOptionId(),option3Multi.getValue())
+    optionsMapMulti.put(option4Multi.getOptionId(),option4Multi.getValue())
+    optionsMapMulti.put(option5Multi.getOptionId(),option5Multi.getValue())
+    optionsMapMulti.put(option6Multi.getOptionId(),option6Multi.getValue())
+    optionsMapMulti.put(7L,"какая то опция")
+    optionsMapMulti.put(8L,"и здесь что то")
+    optionsMapMulti.put(9L,"а может и тут")
+    selectListMulti.setFieldOptions(optionsMapMulti)
+    
+	def selectListSingleObject = ComponentAccessor.customFieldManager.getCustomFieldObjectsByName("SelectList(single)")[0]
+	def configSingle = selectListMultiObject.getRelevantConfig(getIssueContext())
+	def optionsSingle = ComponentAccessor.optionsManager.getOptions(configSingle)
+    LinkedHashMap optionsMapSingle = new LinkedHashMap()
+    def option1Single = optionsMulti.find{it.value == "Option 1"}
+    def option2Single = optionsMulti.find{it.value == "Option 2"}
+    def option3Single = optionsMulti.find{it.value == "Option 3"}
+    def option4Single = optionsMulti.find{it.value == "Option 4"}
+    def option5Single = optionsMulti.find{it.value == "Option 5"}
+    def option6Single = optionsMulti.find{it.value == "Option 6"}
+    optionsMapSingle.put(-1L,"None")
+    optionsMapSingle.put(option1Single.getOptionId(),option1Single.getValue())
+    optionsMapSingle.put(option2Single.getOptionId(),option2Single.getValue())
+    optionsMapSingle.put(option3Single.getOptionId(),option3Single.getValue())
+    optionsMapSingle.put(option4Single.getOptionId(),option4Single.getValue())
+    optionsMapSingle.put(option5Single.getOptionId(),option5Single.getValue())
+    optionsMapSingle.put(option6Single.getOptionId(),option6Single.getValue())
+    optionsMapSingle.put(7L,"какая то опция")
+    optionsMapSingle.put(8L,"и здесь что то")
+    optionsMapSingle.put(9L,"а может и тут")
+    selectListSingle.setFieldOptions(optionsMapSingle)
+}
+
+void rejectedLists() {
+    def selectListMulti = getFieldByName("SelectList(Multi)")
+	def selectListSingle = getFieldByName("SelectList(single)")
+	def selectListMultiObject = ComponentAccessor.customFieldManager.getCustomFieldObjectsByName("SelectList(Multi)")[0]
+	def configMulti = selectListMultiObject.getRelevantConfig(getIssueContext())
+	def optionsMulti = ComponentAccessor.optionsManager.getOptions(configMulti)
+    LinkedHashMap optionsMapMulti = new LinkedHashMap()
+    def option1Multi = optionsMulti.find{it.value == "Option 1"}
+    def option2Multi = optionsMulti.find{it.value == "Option 2"}
+    def option3Multi = optionsMulti.find{it.value == "Option 3"}
+    def option4Multi = optionsMulti.find{it.value == "Option 4"}
+    def option5Multi = optionsMulti.find{it.value == "Option 5"}
+    def option6Multi = optionsMulti.find{it.value == "Option 6"}
+    optionsMapMulti.put(option1Multi.getOptionId(),option1Multi.getValue())
+    optionsMapMulti.put(option2Multi.getOptionId(),option2Multi.getValue())
+    optionsMapMulti.put(option3Multi.getOptionId(),option3Multi.getValue())
+    optionsMapMulti.put(option4Multi.getOptionId(),option4Multi.getValue())
+    optionsMapMulti.put(option5Multi.getOptionId(),option5Multi.getValue())
+    optionsMapMulti.put(option6Multi.getOptionId(),option6Multi.getValue())
+    selectListMulti.setFieldOptions(optionsMapMulti)
+    
+    def selectListSingleObject = ComponentAccessor.customFieldManager.getCustomFieldObjectsByName("SelectList(single)")[0]
+	def configSingle = selectListMultiObject.getRelevantConfig(getIssueContext())
+	def optionsSingle = ComponentAccessor.optionsManager.getOptions(configSingle)
+    LinkedHashMap optionsMapSingle = new LinkedHashMap()
+    def option1Single = optionsMulti.find{it.value == "Option 1"}
+    def option2Single = optionsMulti.find{it.value == "Option 2"}
+    def option3Single = optionsMulti.find{it.value == "Option 3"}
+    def option4Single = optionsMulti.find{it.value == "Option 4"}
+    def option5Single = optionsMulti.find{it.value == "Option 5"}
+    def option6Single = optionsMulti.find{it.value == "Option 6"}
+    optionsMapSingle.put(-1L,"None")
+    optionsMapSingle.put(option1Single.getOptionId(),option1Single.getValue())
+    optionsMapSingle.put(option2Single.getOptionId(),option2Single.getValue())
+    optionsMapSingle.put(option3Single.getOptionId(),option3Single.getValue())
+    optionsMapSingle.put(option4Single.getOptionId(),option4Single.getValue())
+    optionsMapSingle.put(option5Single.getOptionId(),option5Single.getValue())
+    optionsMapSingle.put(option6Single.getOptionId(),option6Single.getValue())
+    selectListSingle.setFieldOptions(optionsMapSingle)
+}
