@@ -1,0 +1,87 @@
+// not used
+
+import com.atlassian.jira.issue.MutableIssue
+import com.atlassian.jira.issue.Issue
+import com.atlassian.jira.issue.issuetype.IssueTypeId
+import com.atlassian.jira.component.ComponentAccessor
+import com.atlassian.jira.event.type.EventDispatchOption
+import com.atlassian.jira.user.ApplicationUser
+import com.atlassian.jira.issue.issuetype.IssueType
+import com.atlassian.jira.project.Project
+import com.atlassian.jira.issue.CustomFieldManager
+import com.atlassian.jira.issue.fields.CustomField
+import com.atlassian.jira.event.type.EventDispatchOption
+import com.atlassian.jira.issue.IssueManager
+import org.apache.log4j.Level
+import org.apache.log4j.Logger
+
+
+//def issue = ComponentAccessor.issueManager.getIssueObject("PROX-6")  //TEST
+MutableIssue curIssue = issue
+new MoveClass().run(curIssue)
+
+public class MoveClass {
+    
+    IssueManager issueManager = ComponentAccessor.issueManager
+    ApplicationUser jiraServiceUser = ComponentAccessor.userManager.getUserByKey('jiraadmin')
+	String issueType = ComponentAccessor.constantsManager.getAllIssueTypeObjects().find{it.getName() == "Task"}.id
+    Project projectNorn = ComponentAccessor.projectManager.getProjectObjByKey("NORN")
+	Project projectRuag = ComponentAccessor.projectManager.getProjectObjByKey("RUAG")
+    CustomField epicLink = ComponentAccessor.customFieldManager.getCustomFieldObjectByName("Epic Link")
+    
+	Logger logger = Logger.getLogger(this.class.name)
+    
+    public def run(MutableIssue issue) {
+		logger.setLevel(Level.DEBUG)
+   		switch (issue.reporter.getEmailAddress()) {
+   			case ("5911@nornik.ru"):
+   				duplicateIssue(issue,projectNorn)
+    			break;
+            case ("rusagroprod@service-now.com"):
+			//case ("a.polyakov@omneemo.com"):
+   				duplicateIssue(issue,projectRuag)
+                
+				break;
+		}
+    }
+
+    void duplicateIssue(MutableIssue parrentIssue, Project project) {
+        MutableIssue newIssue = ComponentAccessor.issueFactory.getIssue()
+		newIssue.setSummary(parrentIssue.summary)
+		newIssue.setReporter(parrentIssue.reporter)
+		newIssue.setDescription(parrentIssue.description)
+		newIssue.setProjectObject(project)
+		newIssue.setIssueTypeId(issueType)
+		Map<String,Object> newIssueParams = ["issue" : newIssue] as Map<String,Object>
+   		MutableIssue createdIssue = issueManager.createIssueObject(jiraServiceUser, newIssueParams) as MutableIssue// создание задач (обязательно наличие всех необходимых филдов) ф
+        logger.debug "Issue ${createdIssue} created"
+        if(createdIssue){
+            Thread.start{
+                sleep(1000)
+                Issue epic = issueManager.getIssueObject(project.key+"-1")
+                updateNewIssue(createdIssue,epic)
+                sleep(1000)
+                deleteIssue(parrentIssue)
+            }
+        }
+    }
+    
+    void updateNewIssue(MutableIssue createdIssue, Issue epic) {
+        createdIssue.setCustomFieldValue(epicLink, epic)
+		ComponentAccessor.issueManager.updateIssue(jiraServiceUser,createdIssue,EventDispatchOption.ISSUE_UPDATED,false)	
+    }
+   
+	void deleteIssue(MutableIssue issue) {
+		def deleteValidationResult = ComponentAccessor.issueService.validateDelete(jiraServiceUser,issue.getId())
+		if (!deleteValidationResult.isValid()) log.warn deleteValidationResult.errorCollection
+    	else ComponentAccessor.issueService.delete(jiraServiceUser, deleteValidationResult)
+	}  
+}
+    
+
+
+    
+   
+
+
+    
