@@ -1,0 +1,211 @@
+import com.atlassian.jira.component.ComponentAccessor
+import com.atlassian.jira.project.ProjectManager
+import com.atlassian.jira.project.Project
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import org.apache.log4j.Level
+import org.apache.log4j.Logger
+import com.atlassian.jira.user.ApplicationUser
+import com.atlassian.jira.issue.search.SearchProvider
+import com.atlassian.jira.jql.parser.JqlQueryParser
+import com.atlassian.jira.web.bean.PagerFilter
+import com.atlassian.jira.issue.fields.CustomField
+import com.atlassian.jira.issue.IssueManager
+import groovy.json.JsonSlurper
+import com.atlassian.jira.issue.Issue
+import com.atlassian.jira.issue.worklog.WorklogManager
+import com.atlassian.jira.issue.worklog.Worklog
+import org.apache.http.client.methods.HttpGet
+import org.apache.http.entity.ContentType
+import org.apache.http.entity.StringEntity
+import org.apache.http.entity.mime.MultipartEntityBuilder
+import org.apache.http.entity.mime.content.FileBody
+import org.apache.http.impl.client.HttpClientBuilder
+import com.atlassian.jira.issue.MutableIssue
+import com.atlassian.servicedesk.api.requesttype.RequestTypeService
+import com.atlassian.servicedesk.api.request.type.CustomerRequestTypeService
+import com.onresolve.scriptrunner.runner.customisers.WithPlugin
+import com.onresolve.scriptrunner.runner.customisers.PluginModule
+import com.atlassian.servicedesk.api.util.paging.PagedRequest
+import com.atlassian.servicedesk.api.util.paging.SimplePagedRequest
+import com.atlassian.servicedesk.api.user.UserFactory
+
+
+
+new TimeTracking().run()
+class TimeTracking {
+
+    @WithPlugin("com.atlassian.servicedesk")
+    @PluginModule
+    RequestTypeService requestTypeService
+    
+    ProjectManager projectManager = ComponentAccessor.getProjectManager()
+    JqlQueryParser jqlQueryParser = ComponentAccessor.getComponent(JqlQueryParser) // Все что в этом абзаце для 
+    SearchProvider searchProvider = ComponentAccessor.getComponent(SearchProvider) // Поиска по JQL
+    IssueManager issueManager = ComponentAccessor.getIssueManager()  // +
+    ApplicationUser admin = ComponentAccessor.getUserManager().getUserByKey("jiraadmin") // +
+    Project ApprovalProjectKey = projectManager.getProjectObjByKey("AP")
+	CustomField approversField = ComponentAccessor.customFieldManager.getCustomFieldObjectsByName("Approvers").first()
+    String issueType = ComponentAccessor.constantsManager.getAllIssueTypeObjects().find{it.getName() == "Task"}.id
+    SimpleDateFormat worklogDateFormat = new SimpleDateFormat("dd.MMM.yyyy") // формат для Summary
+    SimpleDateFormat checkDateFormat = new SimpleDateFormat("MMM.yyyy") // формат для поиска совпадений по прошлому месяцу
+    def CustomerRequestTypeValue = getCustomerRequestType()
+    CustomField cfReqType = ComponentAccessor.customFieldManager.getCustomFieldObjectsByName("Customer Request Type").first()
+    List<String> ignoredTeams = ["Норникель (ServiceNow Content-server)","Норникель (ServiceNow Support)",
+                                 "Норникель SN-Creatio Data Migration", "Норникель (Creatio Suport)", "All employees"]
+
+
+    String BASE_URL = "http://jira.omneemo.com/rest/tempo-teams/2/team" // URL рест запроса для всех тим
+    Logger logger = Logger.getLogger(this.class.name)
+    
+    def run() {
+        logger.setLevel(Level.DEBUG)
+        def getAllTeam = getRequest(BASE_URL) // Сохраняем все тимы
+            if (getAllTeam.statusLine.statusCode == 200) { // Проверка
+                def jsonObj = new JsonSlurper().parseText(getAllTeam.entity.content.text) // Парсим в Json
+                for (Object team : jsonObj) { // Перебираем тимы и вытаскиваем каждую
+                    String nameTeam = team.name // Записываем имя, ниже лида и ID тимы.
+                    String lead = team.lead
+                    String teamId = team.id
+                    ApplicationUser teamLead = ComponentAccessor.userManager.getUserByKey(lead)
+                    //logger.debug("TeamName = ${nameTeam}, TeamLead = ${lead}, ")
+                    if (nameTeam in ignoredTeams) {
+                        logger.debug("Team is ${nameTeam} dont need on this script.")
+                        continue
+                    }
+                    String GET_PROJECT_ID = "${BASE_URL}/${teamId}/link" // URL рест запроса что бы вытянуть ID проекта
+                    def projectObject = getRequest(GET_PROJECT_ID) // Все по аналогии с предыдущим рестом
+                    if (projectObject.statusLine.statusCode == 200) {
+                        def jsonProjectObject = new JsonSlurper().parseText(projectObject.entity.content.text)
+                        if (jsonProjectObject.scope.size() == 0) {
+                            logger.debug("${nameTeam} dont have links in.")
+                            continue // Обходим проблему c отсутствием линков проектов
+                        } 
+                        List<String> projectIdList = jsonProjectObject.scope
+                        List<String> projectKeys = getProjectKeys(projectIdList)
+                        if (projectKeys.size == 0) {
+                            logger.debug("${nameTeam} dont have projects.")
+                            continue
+                        } 
+                        logger.debug("TeamName = ${nameTeam}, TeamLead = ${lead},  projectKey = ${projectKeys}")
+                        String GET_MEMBERS_OF_TEAM = "${BASE_URL}/${teamId}/member" // URL для переборки всех мемберов из определенной тимы
+                        def memberOfTeamJson = getRequest(GET_MEMBERS_OF_TEAM) // Все по аналогии с предыдущим рестом
+                        if (memberOfTeamJson.statusLine.statusCode == 200) {
+                            def memberOfTeam =  new JsonSlurper().parseText(memberOfTeamJson.entity.content.text)
+                            for (Object member : memberOfTeam){ // Перебираем каждого юзера тимы
+                                //logger.debug("Name member is ${member.member.name}, team is ${nameTeam}, project scope is ${projectIdList}")
+                                String jql = """worklogAuthor = ${member.member.name} AND  worklogDate >= startOfMonth(-1) 
+                                AND worklogDate <= endOfMonth(-1) AND project in (${String.join("," , projectKeys)})""" // jql для поиска ворклогов
+                                //logger.debug("jql is - ${jql}") // member.member.name Обязательно поменять в JQL на jql!!!!!!!!!!!!
+
+                                
+                                ApplicationUser reporter = ComponentAccessor.userManager.getUserByName(member.member.name)
+
+                                 def query = jqlQueryParser.parseQuery(jql) // Хитрые манипуляция для поиска в Jira по jql выше
+                                 def results = searchProvider.search(query, admin, PagerFilter.getUnlimitedFilter()) // поиск результатов
+                                 //logger.debug("Total issues: ${results.total}") // количество найденных ишью по условию
+                                 boolean worklogsExists = false
+                                 String lastMonth
+                                 String table = "||Issue Key||Worklog Date||Worklog Description||Worklog Time||" + "\n"
+                                 Integer totalWorklogTime = 0
+                                 for (Issue issue : results.getIssues()) { // Перебираем все задачи из JQL поиска
+                                     //logger.debug("issue for worklog ${issue.key}") 
+                                     Collection<Worklog> worklogs = ComponentAccessor.worklogManager.getByIssue(issue) // Вытягиваем ворклоги определенной задачи
+                                     for(Worklog worklog : worklogs){ // перебираем ворклоги
+                                        String worklogDesc // Проверка что ворклог деск не пустой.
+                                        if (worklog.comment == "") worklogDesc = "There is no worklog description" // ^^^^
+                                        else worklogDesc = worklog.comment.trim() // ^^^^
+                                        Calendar beforeCurrentMonth = Calendar.getInstance() // Создаем календарь
+                                        beforeCurrentMonth.add(Calendar.MONTH, -1) // Берем предыдущий месяц
+                                        lastMonth = checkDateFormat.format(beforeCurrentMonth.getTime()) // Выставляем формат для читаемого сравнения
+                                        String worklogMonth = checkDateFormat.format(worklog.startDate) // Аналогично, все это в стринге.
+                                        if (worklog.getAuthorObject().username == "${member.member.name}" && lastMonth == worklogMonth) { // Выбираем подходящие ворклоги из всех ворклогов
+                                            //logger.debug(""""IssueKey is - ${worklog.getIssue().key}, worklog's author is - ${worklog.getAuthorObject().username},
+                                            //worklog Date is - ${worklogDateFormat.format(worklog.startDate)}, worklog description is - ${worklog.comment}  
+                                           // worklog time is - ${calculateTime(worklog.timeSpent)}""")
+                                            table = table + "|${worklog.getIssue().key}|${worklogDateFormat.format(worklog.startDate)}|${worklogDesc}|${calculateTime(worklog.timeSpent)}|" + " " + "\n"
+                                            totalWorklogTime = totalWorklogTime + worklog.timeSpent
+                                            worklogsExists = true
+                                        }
+                                     }
+                                 }
+                                if (worklogsExists){
+                                    table += "h1.Total Time = ${calculateTime(totalWorklogTime)}"
+                                    createIssue (nameTeam, lastMonth, table, reporter, teamLead)
+                                } 
+                             }
+                         }
+                     }
+                }
+            }
+        }
+
+    def getRequest(String url) { 
+        def httpClient = HttpClientBuilder.create().build()
+        def httpGet = new HttpGet(url)
+        httpGet.with {
+            setHeader("Authorization", "Basic amlyYWFkbWluOnR2TkRSUW5ZRUtkUFE=")
+            setHeader("X-Atlassian-Token", "nocheck")
+
+        }
+        return httpClient.execute(httpGet)
+    }
+
+    void createIssue (String teamName , String worklogMonth, String table, ApplicationUser reporter, ApplicationUser teamLead) {
+    	Issue newIssue = ComponentAccessor.issueFactory.getIssue()
+        newIssue.setCustomFieldValue(approversField, [teamLead])
+        newIssue.setSummary("${teamName} | ${reporter.getDisplayName()} | ${worklogMonth}")
+        newIssue.setDescription(table)
+        newIssue.setReporter(reporter)
+        newIssue.setAssignee(teamLead)
+        newIssue.setProjectObject(ApprovalProjectKey)
+        newIssue.setIssueTypeId(issueType)
+        newIssue.setCustomFieldValue(cfReqType,CustomerRequestTypeValue)
+
+        Map<String,Object> newIssueParams = ["issue" : newIssue] as Map<String,Object>
+        issueManager.createIssueObject(admin, newIssueParams) // создание задач (обязательно наличие всех необходимых филдов)
+    }
+
+    String calculateTime(Long worklogTime) {
+        Long formatTime1
+        Long forMinutes = worklogTime / 60
+        Long minutes = forMinutes % 60
+        Long forHours = (forMinutes - minutes) / 60
+        String result = ""
+        if (forHours > 0) result = "${forHours}h"      
+        if (minutes > 0) result = result + " ${minutes}m"
+        return result
+    }
+    
+    List <String> getProjectKeys(List<String> projectIDs) {
+        List<String> projectKeys = new ArrayList<String>()
+        for (String projectId : projectIDs) {
+            Long id = Long.parseLong(projectId)
+            if (id) {
+                Project currentProject = projectManager.getProjectObj(id)
+                if (currentProject) projectKeys.add(currentProject.key)
+            }    
+        }
+        return projectKeys
+    }
+    
+    def getCustomerRequestType(){
+    	def newRequestType
+        for(int limitRequest = 0;limitRequest <301;limitRequest += 100){
+            PagedRequest pagedRequest  = new SimplePagedRequest(limitRequest,limitRequest+100)
+            def reqQ2 = requestTypeService.newQueryBuilder().pagedRequest(pagedRequest).build()
+            def reqT2 = requestTypeService.getRequestTypes(admin, reqQ2)
+			if(reqT2.right.results.find{it.getName()=="Time Sheet Approval"}){
+                newRequestType = reqT2.right.results.find{it.getName()=="Time Sheet Approval"}
+                break
+            }
+        }     
+    	def requestTypeService2 = ComponentAccessor.getOSGiComponentInstanceOfType(CustomerRequestTypeService)
+        def reqQ3 = requestTypeService2.newQueryBuilder().requestType(newRequestType).build()
+        def userFactory = ComponentAccessor.getOSGiComponentInstanceOfType(UserFactory)
+        def uncheckedUser = userFactory.getUncheckedUser()
+        def reqType = requestTypeService2.getCustomerRequestType(uncheckedUser, reqQ3)//получаем его id для записи в кастомное поле 
+        return reqType.right
+    }
+}
+
