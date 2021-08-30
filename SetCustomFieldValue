@@ -1,0 +1,58 @@
+import com.atlassian.jira.component.ComponentAccessor
+import com.atlassian.jira.issue.CustomFieldManager
+import com.atlassian.jira.issue.MutableIssue
+import com.atlassian.jira.issue.comments.CommentManager
+import com.atlassian.jira.issue.fields.CustomField
+import com.atlassian.jira.user.ApplicationUser
+import org.apache.log4j.Level
+import org.apache.log4j.Logger
+//import Classes.PSJiraSDutils
+import java.sql.Timestamp
+import com.atlassian.jira.event.type.EventDispatchOption
+import com.atlassian.jira.issue.index.IssueIndexingService
+import com.atlassian.jira.util.ImportUtils
+import com.atlassian.jira.user.util.UserManager
+import com.atlassian.jira.issue.IssueManager
+import com.atlassian.jira.issue.link.RemoteIssueLinkBuilder
+import com.atlassian.jira.issue.link.RemoteIssueLinkManager
+import com.atlassian.jira.bc.issue.IssueService
+import com.atlassian.jira.issue.IssueInputParameters
+import com.atlassian.servicedesk.api.requesttype.RequestTypeService
+import com.atlassian.servicedesk.api.request.type.CustomerRequestTypeService
+import com.atlassian.servicedesk.api.user.UserFactory
+import com.onresolve.scriptrunner.runner.customisers.WithPlugin
+import com.onresolve.scriptrunner.runner.customisers.PluginModule
+import com.atlassian.jira.issue.link.IssueLinkManager
+import com.atlassian.servicedesk.api.util.paging.SimplePagedRequest
+import com.atlassian.servicedesk.api.util.paging.PagedRequest
+import com.atlassian.jira.issue.link.RemoteIssueLink
+import com.atlassian.jira.util.thread.JiraThreadLocalUtil
+
+@WithPlugin("com.atlassian.servicedesk")
+@PluginModule
+RequestTypeService requestTypeService
+
+def issue = ComponentAccessor.getIssueManager().getIssueObject("AP-279")
+setCustomerRequestType(issue)
+
+def setCustomerRequestType(MutableIssue issue){
+    ApplicationUser currentUser = ComponentAccessor.userManager.getUserByName("jiraadmin")
+    def newRequestType
+    for(int limitRequest = 0;limitRequest <301;limitRequest += 100){
+        PagedRequest pagedRequest  = new SimplePagedRequest(limitRequest,limitRequest+100)
+        def reqQ2 = requestTypeService.newQueryBuilder().pagedRequest(pagedRequest).build()
+        def reqT2 = requestTypeService.getRequestTypes(currentUser, reqQ2)
+        if(reqT2.right.results.find{it.getName()=="Time Sheet Approval"}){
+            newRequestType = reqT2.right.results.find{it.getName()=="Time Sheet Approval"}
+            break
+        }
+    }     
+    def requestTypeService2 = ComponentAccessor.getOSGiComponentInstanceOfType(CustomerRequestTypeService)
+    def reqQ3 = requestTypeService2.newQueryBuilder().requestType(newRequestType).build()
+    def userFactory = ComponentAccessor.getOSGiComponentInstanceOfType(UserFactory)
+    def uncheckedUser = userFactory.getUncheckedUser()
+    def reqType = requestTypeService2.getCustomerRequestType(uncheckedUser, reqQ3)//получаем его id для записи в кастомное поле 
+    def cfReqType = ComponentAccessor.getCustomFieldManager().getCustomFieldObjects(issue).find {it.name == 'Customer Request Type'}
+  	issue.setCustomFieldValue(cfReqType,reqType.right)
+    ComponentAccessor.issueManager.updateIssue(currentUser,issue,EventDispatchOption.ISSUE_UPDATED,false)
+ }
